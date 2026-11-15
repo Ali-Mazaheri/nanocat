@@ -7,17 +7,53 @@ on:
     branches: [main]
 
 jobs:
-  test:
+  python:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Run unit tests and smoke tests
+      - name: Run Python CLI and library tests
         run: |
           python3 -m py_compile nanocat
           python3 -m unittest discover -s tests -v
+          python3 -m unittest discover -s packages/python/tests -v
           chmod +x nanocat
           ./nanocat --list > /dev/null
           ./nanocat -n -r 1:10 nanocat > /dev/null
+
+  typescript:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Compile TypeScript SDK
+        working-directory: packages/js
+        run: |
+          npx -p typescript tsc
+
+  csharp:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+      - name: Build C# SDK
+        working-directory: packages/csharp/Nanocat
+        run: dotnet build --configuration Release
+
+  java:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: "temurin"
+          java-version: "17"
+      - name: Compile Java SDK
+        working-directory: packages/java
+        run: javac -d target/classes src/main/java/io/github/alimazaheri/nanocat/Nanocat.java

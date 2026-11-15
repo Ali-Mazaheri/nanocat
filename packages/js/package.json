@@ -1,0 +1,14 @@
+{
+  "name": "@alimazaheri/nanocat",
+  "version": "0.3.0",
+  "description": "Zero-dependency .nanorc syntax highlighter for Node.js CI and browser HTML output.",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "test": "node --test tests/nanocat.test.mjs"
+  },
+  "keywords": ["nano", "nanorc", "syntax-highlighting", "ansi", "ci", "typescript"],
+  "license": "MIT"
+}
