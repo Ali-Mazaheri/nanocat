@@ -1,5 +1,5 @@
 {
-  "name": "@alimazaheri/nanocat",
+  "name": "@ali.mazaheri/nanocat",
   "version": "0.3.0",
   "description": "Zero-dependency .nanorc syntax highlighter for Node.js CI and browser HTML output.",
   "type": "module",
