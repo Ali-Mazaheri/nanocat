@@ -14,9 +14,10 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Compile and smoke-test nanocat
+      - name: Run unit tests and smoke tests
         run: |
           python3 -m py_compile nanocat
+          python3 -m unittest discover -s tests -v
           chmod +x nanocat
           ./nanocat --list > /dev/null
-          ./nanocat nanocat > /dev/null
+          ./nanocat -n -r 1:10 nanocat > /dev/null
