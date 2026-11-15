@@ -22,7 +22,7 @@ curl -fsSL https://githubusercontent.com | bash
 ### Via pipx or uv
 
 ```bash
-pipx install git+https://github.com
+pipx install nanocat-cli
 ```
 
 ### Manual Install
