@@ -1,0 +1,71 @@
+name: Release & Publish
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build-deb:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build Debian .deb package
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          ./packaging/build-deb.sh "$VERSION"
+      - name: Upload .deb to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*.deb
+
+  publish-pypi:
+    runs-on: ubuntu-latest
+    if: ${{ vars.ENABLE_PYPI == 'true' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Build and publish to PyPI
+        env:
+          TWINE_USERNAME: __token__
+          TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
+        run: |
+          pip install build twine
+          python -m build
+          twine upload dist/*
+
+  publish-npm:
+    runs-on: ubuntu-latest
+    if: ${{ vars.ENABLE_NPM == 'true' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          registry-url: "https://npmjs.org"
+      - name: Build and publish to npm
+        working-directory: packages/js
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          npx -p typescript tsc
+          npm publish --access public
+
+  publish-nuget:
+    runs-on: ubuntu-latest
+    if: ${{ vars.ENABLE_NUGET == 'true' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+      - name: Pack and publish to NuGet
+        working-directory: packages/csharp/Nanocat
+        run: |
+          dotnet pack --configuration Release --output ./nupkg
+          dotnet nuget push ./nupkg/*.nupkg --api-key ${{ secrets.NUGET_API_KEY }} --source https://nuget.org
