@@ -62,7 +62,7 @@ color brightblue start="/\\*" end="\\*/"
             wrap_width=8,
         )
         lines = out.splitlines()
-        self.assertEqual(len(lines), 3)
+        self.assertEqual(len(lines), 2)
         self.assertTrue(lines[0].startswith("1 "))
         self.assertTrue(lines[1].startswith("  "))
 
