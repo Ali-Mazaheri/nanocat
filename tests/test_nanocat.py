@@ -40,7 +40,7 @@ color brightblue start="/\\*" end="\\*/"
         finally:
             os.remove(rc_path)
 
-    def test_line_numbers_and_range(self):
+    def test_line_numbers_range_and_git_markers(self):
         text = "line1\nline2\nline3\nline4\n"
         out = nanocat.highlight_text(
             text,
@@ -48,8 +48,23 @@ color brightblue start="/\\*" end="\\*/"
             use_color=False,
             show_numbers=True,
             line_range=(2, 3),
+            git_markers={2: "+", 3: "~"},
         )
-        self.assertEqual(out, "2 line2\n3 line3\n")
+        self.assertEqual(out, "2 + line2\n3 ~ line3\n")
+
+    def test_soft_wrap(self):
+        text = "abcdefghijklmno\n"
+        out = nanocat.highlight_text(
+            text,
+            syntax=None,
+            use_color=False,
+            show_numbers=True,
+            wrap_width=8,
+        )
+        lines = out.splitlines()
+        self.assertEqual(len(lines), 3)
+        self.assertTrue(lines[0].startswith("1 "))
+        self.assertTrue(lines[1].startswith("  "))
 
 
 if __name__ == "__main__":

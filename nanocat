@@ -11,6 +11,7 @@ import re
 import shutil
 import subprocess
 import sys
+import textwrap
 import warnings
 
 warnings.filterwarnings("ignore", category=FutureWarning)
@@ -112,27 +113,36 @@ def extract_quoted_strings(text: str) -> list[str]:
     return results
 
 
-def parse_user_nanorc(rcpath: str) -> tuple[list[str], str]:
+def parse_user_nanorc(rcpaths: list[str]) -> tuple[list[str], dict[str, str]]:
     included_files = []
-    number_color = "cyan"
-    if not os.path.isfile(rcpath):
-        return included_files, number_color
+    theme = {
+        "numbercolor": "cyan",
+        "titlecolor": "bold,brightwhite,blue",
+    }
 
-    try:
-        with open(rcpath, "r", encoding="utf-8", errors="replace") as f:
-            for raw_line in f:
-                line = raw_line.strip()
-                if line.startswith("include "):
-                    for pat in extract_quoted_strings(line[8:]):
-                        expanded = os.path.expanduser(pat)
-                        included_files.extend(sorted(glob.glob(expanded)))
-                elif line.startswith("set numbercolor "):
-                    parts = line.split()
-                    if len(parts) >= 3:
-                        number_color = parts[2]
-    except OSError:
-        pass
-    return included_files, number_color
+    for rcpath in rcpaths:
+        if not rcpath or not os.path.isfile(rcpath):
+            continue
+        try:
+            with open(rcpath, "r", encoding="utf-8", errors="replace") as f:
+                for raw_line in f:
+                    line = raw_line.strip()
+                    if line.startswith("include "):
+                        for pat in extract_quoted_strings(line[8:]):
+                            expanded = os.path.expanduser(pat)
+                            included_files.extend(sorted(glob.glob(expanded)))
+                    elif line.startswith("set numbercolor "):
+                        parts = line.split()
+                        if len(parts) >= 3:
+                            theme["numbercolor"] = parts[2]
+                    elif line.startswith("set titlecolor "):
+                        parts = line.split()
+                        if len(parts) >= 3:
+                            theme["titlecolor"] = parts[2]
+        except OSError:
+            pass
+
+    return included_files, theme
 
 
 def parse_nanorc_file(filepath: str, compile_rules: bool = True) -> list[dict]:
@@ -215,12 +225,12 @@ def compile_syntax_rules(syntax: dict) -> None:
                     pass
 
 
-def load_all_syntaxes(search_dirs: list[str], user_rc: str | None = None) -> list[dict]:
+def load_all_syntaxes(search_dirs: list[str], rcpaths: list[str] | None = None) -> list[dict]:
     files = []
     seen_paths = set()
 
-    if user_rc:
-        inc_files, _ = parse_user_nanorc(user_rc)
+    if rcpaths:
+        inc_files, _ = parse_user_nanorc(rcpaths)
         for p in inc_files:
             if p not in seen_paths:
                 seen_paths.add(p)
@@ -240,6 +250,48 @@ def load_all_syntaxes(search_dirs: list[str], user_rc: str | None = None) -> lis
     for path in files:
         all_syntaxes.extend(parse_nanorc_file(path, compile_rules=False))
     return all_syntaxes
+
+
+def get_git_line_markers(filepath: str) -> dict[int, str]:
+    """Return a mapping of 1-indexed line numbers to git status ('+', '~', '_')."""
+    markers: dict[int, str] = {}
+    if not filepath or not os.path.isfile(filepath) or not shutil.which("git"):
+        return markers
+
+    abs_path = os.path.abspath(filepath)
+    repo_dir = os.path.dirname(abs_path)
+
+    try:
+        proc = subprocess.run(
+            ["git", "-C", repo_dir, "diff", "--no-color", "-U0", "HEAD", "--", abs_path],
+            capture_output=True,
+            text=True,
+            timeout=2,
+        )
+        if proc.returncode != 0 or not proc.stdout:
+            return markers
+
+        hunk_re = re.compile(r"^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@")
+        for line in proc.stdout.splitlines():
+            m = hunk_re.match(line)
+            if not m:
+                continue
+            old_count = int(m.group(2)) if m.group(2) is not None else 1
+            new_start = int(m.group(3))
+            new_count = int(m.group(4)) if m.group(4) is not None else 1
+
+            if new_count == 0 and old_count > 0:
+                markers[max(1, new_start)] = "_"
+            elif old_count == 0 and new_count > 0:
+                for ln in range(new_start, new_start + new_count):
+                    markers[ln] = "+"
+            else:
+                for ln in range(new_start, new_start + new_count):
+                    markers[ln] = "~"
+    except (OSError, subprocess.SubprocessError):
+        pass
+
+    return markers
 
 
 def select_syntax(syntaxes: list[dict], lang: str | None, filename: str | None, content: str) -> dict | None:
@@ -265,7 +317,7 @@ def select_syntax(syntaxes: list[dict], lang: str | None, filename: str | None, 
                 break
 
     if not matched and content:
-        first_line = content.splitlines()[0]
+        first_line = content.splitlines()
         for s in syntaxes:
             for pat in s["header_patterns"]:
                 try:
@@ -292,6 +344,12 @@ def parse_line_range(range_spec: str) -> tuple[int | None, int | None]:
     return start, end
 
 
+def wrap_styled_chars(chars_with_styles: list[tuple[str, str]], width: int) -> list[list[tuple[str, str]]]:
+    if width <= 0 or len(chars_with_styles) <= width:
+        return [chars_with_styles]
+    return [chars_with_styles[i : i + width] for i in range(0, len(chars_with_styles), width)]
+
+
 def highlight_text(
     text: str,
     syntax: dict | None,
@@ -299,6 +357,8 @@ def highlight_text(
     show_numbers: bool = False,
     line_range: tuple[int | None, int | None] = (None, None),
     number_color: str = "cyan",
+    git_markers: dict[int, str] | None = None,
+    wrap_width: int = 0,
 ) -> str:
     if not text:
         return ""
@@ -334,46 +394,65 @@ def highlight_text(
     gutter_width = len(str(total_lines))
     num_ansi = color_to_ansi(number_color) if use_color else ""
     reset = "\033[0m"
+    git_colors = {"+": "\033[32m", "~": "\033[33m", "_": "\033[31m"}
+
+    has_git = git_markers is not None
+    gutter_cols = (gutter_width + 1 if show_numbers else 0) + (2 if has_git else 0)
+    avail_width = max(10, wrap_width - gutter_cols) if wrap_width > 0 else 0
 
     out_lines = []
     offset = 0
     for line_no, raw_line in enumerate(raw_lines, start=1):
         line_len = len(raw_line)
         if start_idx <= line_no - 1 < end_idx:
-            prefix = ""
-            if show_numbers:
-                num_str = f"{line_no:>{gutter_width}} "
-                prefix = f"{num_ansi}{num_str}{reset}" if num_ansi else num_str
+            has_newline = raw_line.endswith("\n")
+            body = raw_line[:-1] if has_newline else raw_line
+            styled_chars = [(ch, styles[offset + i] if use_color else "") for i, ch in enumerate(body)]
+            chunks = wrap_styled_chars(styled_chars, avail_width) if avail_width > 0 else [styled_chars]
 
-            line_buf = [prefix]
-            cur_style = ""
-            for i, ch in enumerate(raw_line):
-                st = styles[offset + i] if use_color else ""
-                if st != cur_style:
-                    if cur_style:
-                        line_buf.append(reset)
-                    if st:
-                        line_buf.append(st)
-                    cur_style = st
-                line_buf.append(ch)
-            if cur_style:
-                line_buf.append(reset)
-            out_lines.append("".join(line_buf))
+            for chunk_idx, chunk in enumerate(chunks):
+                prefix = ""
+                if show_numbers:
+                    num_str = f"{line_no:>{gutter_width}} " if chunk_idx == 0 else " " * (gutter_width + 1)
+                    prefix += f"{num_ansi}{num_str}{reset}" if num_ansi else num_str
+                if has_git:
+                    mark = git_markers.get(line_no, " ") if chunk_idx == 0 else " "
+                    prefix += f"{git_colors[mark]}{mark}{reset} " if (use_color and mark in git_colors) else f"{mark} "
+
+                line_buf = [prefix]
+                cur_style = ""
+                for ch, st in chunk:
+                    if st != cur_style:
+                        if cur_style:
+                            line_buf.append(reset)
+                        if st:
+                            line_buf.append(st)
+                        cur_style = st
+                    line_buf.append(ch)
+                if cur_style:
+                    line_buf.append(reset)
+                if has_newline or chunk_idx < len(chunks) - 1:
+                    line_buf.append("\n")
+                out_lines.append("".join(line_buf))
         offset += line_len
 
     return "".join(out_lines)
 
 
+def format_file_header(filepath: str, title_color: str, use_color: bool, width: int) -> str:
+    label = f" {filepath} "
+    padded = label.ljust(width)
+    if use_color:
+        ansi = color_to_ansi(title_color)
+        return f"{ansi}{padded}\033[0m\n" if ansi else f"=== {filepath} ===\n"
+    return f"=== {filepath} ===\n"
+
+
 def write_with_paging(output: str, paging_mode: str, use_color: bool) -> None:
     is_tty = sys.stdout.isatty()
-    should_page = False
-    if paging_mode == "always":
-        should_page = True
-    elif paging_mode == "auto" and is_tty:
-        term_height = shutil.get_terminal_size((80, 24)).lines
-        if len(output.splitlines()) >= term_height:
-            should_page = True
-
+    should_page = paging_mode == "always" or (
+        paging_mode == "auto" and is_tty and len(output.splitlines()) >= shutil.get_terminal_size((80, 24)).lines
+    )
     if should_page and shutil.which("less"):
         less_cmd = ["less", "-R"] if use_color else ["less"]
         try:
@@ -382,7 +461,6 @@ def write_with_paging(output: str, paging_mode: str, use_color: bool) -> None:
             return
         except OSError:
             pass
-
     sys.stdout.write(output)
 
 
@@ -390,32 +468,27 @@ def main() -> None:
     parser = argparse.ArgumentParser(
         description="Highlight files or stdin using GNU nano (.nanorc) syntax definitions."
     )
-    parser.add_argument("file", nargs="?", help="File to highlight (reads stdin if omitted)")
+    parser.add_argument("files", nargs="*", help="Files to highlight (reads stdin if omitted)")
     parser.add_argument("-l", "--lang", help="Language/syntax name (e.g., go, tsx, sh, python)")
     parser.add_argument("-n", "--number", action="store_true", help="Show line numbers")
+    parser.add_argument("-g", "--git", action="store_true", help="Show git diff line markers (+, ~, _)")
+    parser.add_argument("-w", "--wrap", action="store_true", help="Soft-wrap long lines to terminal width")
+    parser.add_argument("-q", "--quiet", action="store_true", help="Suppress file headers when viewing multiple files")
     parser.add_argument("-r", "--range", help="Line range to display (e.g., 10:40, 10:, :40)")
-    parser.add_argument(
-        "--color", choices=["auto", "always", "never"], default="auto",
-        help="When to use ANSI colors (default: auto)",
-    )
-    parser.add_argument(
-        "--paging", choices=["auto", "always", "never"], default="auto",
-        help="When to page output through less -R (default: auto)",
-    )
+    parser.add_argument("--theme", help="Path to a .nanorc theme file (sets numbercolor/titlecolor)")
+    parser.add_argument("--color", choices=["auto", "always", "never"], default="auto", help="When to use ANSI colors")
+    parser.add_argument("--paging", choices=["auto", "always", "never"], default="auto", help="When to page output")
     parser.add_argument("--list", action="store_true", help="List all available syntax names")
-    parser.add_argument(
-        "-d", "--dir", action="append",
-        help="Additional directory or .nanorc file to load (default: ~/.nano and /usr/share/nano)",
-    )
+    parser.add_argument("-d", "--dir", action="append", help="Additional directory or .nanorc file to load")
     args = parser.parse_args()
 
-    user_rc = os.path.expanduser("~/.nanorc")
-    _, number_color = parse_user_nanorc(user_rc)
-    dirs = args.dir or [
-        os.path.expanduser("~/.nano"),
-        "/usr/share/nano",
-    ]
-    syntaxes = load_all_syntaxes(dirs, user_rc=user_rc if not args.dir else None)
+    rcpaths = [os.path.expanduser("~/.nanorc")]
+    if args.theme:
+        rcpaths.append(os.path.expanduser(args.theme))
+
+    _, theme = parse_user_nanorc(rcpaths)
+    dirs = args.dir or [os.path.expanduser("~/.nano"), "/usr/share/nano"]
+    syntaxes = load_all_syntaxes(dirs, rcpaths=rcpaths if not args.dir else None)
 
     if args.list:
         seen = set()
@@ -433,29 +506,35 @@ def main() -> None:
         except ValueError:
             parser.error(f"Invalid line range: {args.range}")
 
-    if args.file:
-        with open(args.file, "r", encoding="utf-8", errors="replace") as f:
-            content = f.read()
-    else:
-        content = sys.stdin.read()
+    use_color = True if args.color == "always" else (False if args.color == "never" else sys.stdout.isatty())
+    term_cols = shutil.get_terminal_size((80, 24)).columns
+    wrap_width = term_cols if args.wrap else 0
 
-    if args.color == "always":
-        use_color = True
-    elif args.color == "never":
-        use_color = False
-    else:
-        use_color = sys.stdout.isatty()
+    chunks = []
+    targets = args.files if args.files else [None]
+    show_headers = len(targets) > 1 and not args.quiet
 
-    syntax = select_syntax(syntaxes, args.lang, args.file, content)
-    rendered = highlight_text(
-        content,
-        syntax,
-        use_color=use_color,
-        show_numbers=args.number,
-        line_range=line_range,
-        number_color=number_color,
-    )
-    write_with_paging(rendered, args.paging, use_color)
+    for filepath in targets:
+        if filepath:
+            with open(filepath, "r", encoding="utf-8", errors="replace") as f:
+                content = f.read()
+        else:
+            content = sys.stdin.read()
+
+        if show_headers and filepath:
+            chunks.append(format_file_header(filepath, theme["titlecolor"], use_color, term_cols))
+
+        git_markers = get_git_line_markers(filepath) if (args.git and filepath) else None
+        syntax = select_syntax(syntaxes, args.lang, filepath, content)
+        chunks.append(
+            highlight_text(
+                content, syntax, use_color=use_color, show_numbers=args.number,
+                line_range=line_range, number_color=theme["numbercolor"],
+                git_markers=git_markers, wrap_width=wrap_width,
+            )
+        )
+
+    write_with_paging("".join(chunks), args.paging, use_color)
 
 
 if __name__ == "__main__":

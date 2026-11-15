@@ -7,9 +7,9 @@ Zero external dependencies (Python 3 standard library only).
 ## Features
 
 - Evaluates `.nanorc` `color` and `icolor` rules (including multi-line `start=... end=...` blocks) in nano's exact top-to-bottom precedence order
-- Reads `~/.nanorc` `include` directives and `set numbercolor` theme settings automatically
-- Line numbers (`-n` / `--number`) and line-range slicing (`-r 10:40`)
-- Auto-paging through `less -R` for long files (`--paging=auto|always|never`) and smart TTY colour detection (`--color=auto|always|never`)
+- Reads `~/.nanorc` `include` directives and `numbercolor` / `titlecolor` theme settings (plus `--theme` overrides)
+- Line numbers (`-n` / `--number`), Git diff gutter markers (`-g` / `--git`), and line-range slicing (`-r 10:40`)
+- Soft-wrapping (`-w` / `--wrap`), multi-file headers, and auto-paging through `less -R` (`--paging=auto|always|never`)
 
 ## Installation
 
@@ -36,11 +36,12 @@ ln -sf "\$(pwd)/nanocat/nanocat" ~/.local/bin/nanocat
 ## Usage
 
 ```bash
-# Highlight a file directly (auto-detects extension or shebang)
+# Highlight one or more files directly (auto-detects extension or shebang)
 nanocat path/to/file.tsx
+nanocat -n -g src/App.tsx src/index.tsx
 
-# Show line numbers and slice a specific line range (e.g., lines 10 to 40)
-nanocat -n -r 10:40 path/to/file.go
+# Show line numbers, git diff markers, and slice lines 10 to 40
+nanocat -n -g -r 10:40 path/to/file.go
 
 # Highlight piped stdin using a specific language
 grep -n "func " main.go | nanocat -l go
