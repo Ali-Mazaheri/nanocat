@@ -8,7 +8,6 @@ on:
 permissions:
   contents: write
   id-token: write
-  packages: write
 
 jobs:
   build-deb:
@@ -43,54 +42,3 @@ jobs:
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
           skip-existing: true
-
-  publish-npm:
-    runs-on: ubuntu-latest
-    if: ${{ vars.ENABLE_NPM == 'true' }}
-    environment:
-      name: npm
-      url: https://npmjs.com
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "24"
-      - name: Build and publish to npm via Trusted Publisher
-        working-directory: packages/js
-        run: |
-          npx -p typescript tsc
-          npm publish --provenance --access public
-
-  publish-nuget:
-    runs-on: ubuntu-latest
-    if: ${{ vars.ENABLE_NUGET == 'true' }}
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: "8.0.x"
-      - name: Pack and publish to NuGet
-        working-directory: packages/csharp/Nanocat
-        run: |
-          VERSION="${GITHUB_REF_NAME#v}"
-          dotnet pack --configuration Release -p:PackageVersion="$VERSION" --output ./nupkg
-          dotnet nuget push ./nupkg/*.nupkg --api-key ${{ secrets.NUGET_API_KEY }} --source https://nuget.org --skip-duplicate
-
-  publish-java:
-    runs-on: ubuntu-latest
-    if: ${{ vars.ENABLE_JAVA == 'true' }}
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
-        with:
-          distribution: "temurin"
-          java-version: "17"
-          server-id: github
-          server-username: ${{ github.actor }}
-          server-password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Deploy Java package to GitHub Packages
-        working-directory: packages/java
-        run: |
-          VERSION="${GITHUB_REF_NAME#v}"
-          mvn -B versions:set -DnewVersion="$VERSION"
-          mvn -B deploy -DaltDeploymentRepository=github::default::https://github.com
