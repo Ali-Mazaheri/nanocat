@@ -39,6 +39,16 @@ npm install @ali.mazaheri/nanocat
 curl -fsSL https://githubusercontent.comAli-Mazaheri/nanocat/main/install.shAli-Mazaheri/nanocat/main/install.sh | bash
 ```
 
+### Standalone (Copy Into Any Project or Container)
+
+Because `nanocat` is a single file with zero external dependencies, you can copy it directly into your repository, `bin/` folder, or Docker image:
+
+```bash
+curl -fsSL https://githubusercontent.com{USER_REPO}/main/nanocat -o ./nanocat
+chmod +x ./nanocat
+./nanocat -n path/to/file.py
+```
+
 ## CLI Usage
 
 ```bash
