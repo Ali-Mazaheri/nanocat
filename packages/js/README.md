@@ -16,7 +16,7 @@ Zero external dependencies (Python 3 standard library only).
 ### Quick Install (One-Liner)
 
 ```bash
-curl -fsSL https://githubusercontent.com | bash
+curl -fsSL https://github.com/Ali-Mazaheri/nanocat/raw/main/install.sh | bash
 ```
 
 ### Via pipx or uv
