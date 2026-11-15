@@ -1,0 +1,307 @@
+#!/usr/bin/env python3
+"""
+nanocat - Syntax-highlight files or stdin using GNU nano (.nanorc) rules.
+Zero external dependencies (Python 3 standard library only).
+"""
+
+import argparse
+import glob
+import os
+import re
+import sys
+import warnings
+warnings.filterwarnings("ignore", category=FutureWarning)
+
+ANSI_FG = {
+    "black": "30", "red": "31", "green": "32", "yellow": "33",
+    "blue": "34", "magenta": "35", "cyan": "36", "white": "37",
+    "normal": "39", "grey": "90", "gray": "90",
+    "brightblack": "90", "brightred": "91", "brightgreen": "92",
+    "brightyellow": "93", "brightblue": "94", "brightmagenta": "95",
+    "brightcyan": "96", "brightwhite": "97",
+    "lightblack": "90", "lightred": "91", "lightgreen": "92",
+    "lightyellow": "93", "lightblue": "94", "lightmagenta": "95",
+    "lightcyan": "96", "lightwhite": "97",
+    "orange": "38;5;208", "purple": "38;5;135", "pink": "38;5;213",
+    "brown": "38;5;130", "peach": "38;5;216", "mint": "38;5;121",
+    "sky": "38;5;117", "salmon": "38;5;209", "teal": "38;5;30",
+    "crimson": "38;5;161", "plum": "38;5;96", "sage": "38;5;108",
+    "sea": "38;5;37", "lagoon": "38;5;38", "rose": "38;5;211",
+    "mauve": "38;5;176", "ochre": "38;5;172", "sand": "38;5;180",
+    "slate": "38;5;66", "brick": "38;5;124", "lime": "38;5;154",
+}
+
+ANSI_BG = {
+    "black": "40", "red": "41", "green": "42", "yellow": "43",
+    "blue": "44", "magenta": "45", "cyan": "46", "white": "47",
+    "normal": "49", "grey": "100", "gray": "100",
+    "brightblack": "100", "brightred": "101", "brightgreen": "102",
+    "brightyellow": "103", "brightblue": "104", "brightmagenta": "105",
+    "brightcyan": "106", "brightwhite": "107",
+}
+
+POSIX_CLASSES = {
+    "[:space:]": r"\s",
+    "[:blank:]": r"[ \t]",
+    "[:alpha:]": r"[A-Za-z]",
+    "[:alnum:]": r"[A-Za-z0-9]",
+    "[:digit:]": r"[0-9]",
+    "[:xdigit:]": r"[0-9A-Fa-f]",
+    "[:upper:]": r"[A-Z]",
+    "[:lower:]": r"[a-z]",
+    "[:punct:]": r"[!\"#$%&'()*+,\-./:;<=>?@\[\\\]^_`{|}~]",
+}
+
+
+def posix_to_python_regex(pattern: str) -> str:
+    """Convert GNU nano POSIX ERE syntax into Python regex syntax."""
+    pattern = pattern.replace(r"\<", r"\b").replace(r"\>", r"\b")
+    for posix, py_equiv in POSIX_CLASSES.items():
+        pattern = pattern.replace(f"[{posix}]", py_equiv).replace(posix, py_equiv)
+    return pattern
+
+
+def color_to_ansi(color_spec: str) -> str:
+    """Convert nano color specification (e.g. 'bold,brightwhite,blue') to ANSI escape code."""
+    codes = []
+    parts = [p.strip().lower() for p in color_spec.split(",")]
+    idx = 0
+    while idx < len(parts) and parts[idx] in ("bold", "italic", "underline"):
+        if parts[idx] == "bold":
+            codes.append("1")
+        elif parts[idx] == "italic":
+            codes.append("3")
+        elif parts[idx] == "underline":
+            codes.append("4")
+        idx += 1
+
+    if idx < len(parts) and parts[idx]:
+        fg = ANSI_FG.get(parts[idx])
+        if fg:
+            codes.append(fg)
+    if idx + 1 < len(parts) and parts[idx + 1]:
+        bg = ANSI_BG.get(parts[idx + 1])
+        if bg:
+            codes.append(bg)
+
+    return f"\033[{';'.join(codes)}m" if codes else ""
+
+
+def extract_quoted_strings(text: str) -> list[str]:
+    """Extract double-quoted strings from a nanorc directive line."""
+    results = []
+    i = 0
+    n = len(text)
+    while i < n:
+        if text[i] == '"':
+            i += 1
+            buf = []
+            while i < n:
+                if text[i] == "\\" and i + 1 < n and text[i + 1] == '"':
+                    buf.append('"')
+                    i += 2
+                elif text[i] == '"':
+                    i += 1
+                    break
+                else:
+                    buf.append(text[i])
+                    i += 1
+            results.append("".join(buf))
+        else:
+            i += 1
+    return results
+
+
+def parse_nanorc_file(filepath: str) -> list[dict]:
+    """Parse syntax blocks and color rules from a .nanorc file."""
+    syntaxes = []
+    current = None
+
+    try:
+        with open(filepath, "r", encoding="utf-8", errors="replace") as f:
+            lines = f.readlines()
+    except OSError:
+        return syntaxes
+
+    for raw_line in lines:
+        line = raw_line.strip()
+        if not line or line.startswith("#"):
+            continue
+
+        if line.startswith("syntax "):
+            quoted = extract_quoted_strings(line[7:])
+            if not quoted:
+                parts = line.split()
+                name = parts[1].strip('"') if len(parts) > 1 else "unknown"
+                ext_patterns = [p.strip('"') for p in parts[2:]]
+            else:
+                name = quoted[0]
+                ext_patterns = quoted[1:]
+
+            current = {
+                "name": name,
+                "file": filepath,
+                "ext_patterns": ext_patterns,
+                "header_patterns": [],
+                "rules": [],
+            }
+            syntaxes.append(current)
+
+        elif current and line.startswith("header "):
+            current["header_patterns"].extend(extract_quoted_strings(line[7:]))
+
+        elif current and (line.startswith("color ") or line.startswith("icolor ")):
+            icase = line.startswith("icolor ")
+            rest = line[7:] if icase else line[6:]
+            tokens = rest.split(None, 1)
+            if len(tokens) < 2:
+                continue
+            color_spec, rule_body = tokens[0], tokens[1].strip()
+            ansi = color_to_ansi(color_spec)
+            flags = re.IGNORECASE if icase else 0
+
+            if rule_body.startswith("start="):
+                quoted = extract_quoted_strings(rule_body)
+                if len(quoted) >= 2:
+                    try:
+                        start_re = re.compile(posix_to_python_regex(quoted[0]), flags | re.MULTILINE)
+                        end_re = re.compile(posix_to_python_regex(quoted[1]), flags | re.MULTILINE)
+                        current["rules"].append(("block", ansi, start_re, end_re))
+                    except re.error:
+                        pass
+            else:
+                for pat in extract_quoted_strings(rule_body):
+                    try:
+                        compiled = re.compile(posix_to_python_regex(pat), flags | re.MULTILINE)
+                        current["rules"].append(("single", ansi, compiled, None))
+                    except re.error:
+                        pass
+
+    return syntaxes
+
+
+def load_all_syntaxes(search_dirs: list[str]) -> list[dict]:
+    """Load all .nanorc syntax definitions from search directories."""
+    all_syntaxes = []
+    for d in search_dirs:
+        if os.path.isfile(d):
+            all_syntaxes.extend(parse_nanorc_file(d))
+        elif os.path.isdir(d):
+            for path in sorted(glob.glob(os.path.join(d, "*.nanorc"))):
+                all_syntaxes.extend(parse_nanorc_file(path))
+    return all_syntaxes
+
+
+def select_syntax(syntaxes: list[dict], lang: str | None, filename: str | None, content: str) -> dict | None:
+    """Pick the matching syntax definition by language name, filename, or header."""
+    if lang:
+        target = lang.lower()
+        for s in syntaxes:
+            if s["name"].lower() == target or os.path.basename(s["file"]).lower() == f"{target}.nanorc":
+                return s
+
+    if filename:
+        for s in syntaxes:
+            for pat in s["ext_patterns"]:
+                try:
+                    if re.search(posix_to_python_regex(pat), filename):
+                        return s
+                except re.error:
+                    pass
+
+    first_line = content.splitlines()[0] if content else ""
+    if first_line:
+        for s in syntaxes:
+            for pat in s["header_patterns"]:
+                try:
+                    if re.search(posix_to_python_regex(pat), first_line):
+                        return s
+                except re.error:
+                    pass
+
+    return None
+
+
+def highlight_text(text: str, syntax: dict | None) -> str:
+    """Apply nano color rules sequentially to produce ANSI-colored output."""
+    n = len(text)
+    if n == 0 or not syntax:
+        return text
+
+    styles = [""] * n
+
+    for rule_type, ansi, start_re, end_re in syntax["rules"]:
+        if rule_type == "single":
+            for m in start_re.finditer(text):
+                s, e = m.span()
+                for i in range(s, e):
+                    styles[i] = ansi
+        elif rule_type == "block":
+            pos = 0
+            while pos < n:
+                m_start = start_re.search(text, pos)
+                if not m_start:
+                    break
+                m_end = end_re.search(text, m_start.end())
+                end_pos = m_end.end() if m_end else n
+                for i in range(m_start.start(), end_pos):
+                    styles[i] = ansi
+                pos = max(end_pos, m_start.end() + 1)
+
+    out = []
+    cur_style = ""
+    reset = "\033[0m"
+    for ch, st in zip(text, styles):
+        if st != cur_style:
+            if cur_style:
+                out.append(reset)
+            if st:
+                out.append(st)
+            cur_style = st
+        out.append(ch)
+    if cur_style:
+        out.append(reset)
+
+    return "".join(out)
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="Highlight files or stdin using GNU nano (.nanorc) syntax definitions."
+    )
+    parser.add_argument("file", nargs="?", help="File to highlight (reads stdin if omitted)")
+    parser.add_argument("-l", "--lang", help="Language/syntax name (e.g., go, tsx, sh, python)")
+    parser.add_argument("--list", action="store_true", help="List all available syntax names")
+    parser.add_argument(
+        "-d", "--dir", action="append",
+        help="Additional directory or .nanorc file to load (default: ~/.nano and /usr/share/nano)"
+    )
+    args = parser.parse_args()
+
+    dirs = args.dir or [
+        os.path.expanduser("~/.nano"),
+        "/usr/share/nano",
+    ]
+    syntaxes = load_all_syntaxes(dirs)
+
+    if args.list:
+        seen = set()
+        for s in syntaxes:
+            key = (s["name"], os.path.basename(s["file"]))
+            if key not in seen:
+                seen.add(key)
+                print(f"{s['name']:<16} ({s['file']})")
+        return
+
+    if args.file:
+        with open(args.file, "r", encoding="utf-8", errors="replace") as f:
+            content = f.read()
+    else:
+        content = sys.stdin.read()
+
+    syntax = select_syntax(syntaxes, args.lang, args.file, content)
+    sys.stdout.write(highlight_text(content, syntax))
+
+
+if __name__ == "__main__":
+    main()
