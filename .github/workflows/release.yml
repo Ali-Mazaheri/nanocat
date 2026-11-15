@@ -50,11 +50,9 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
-          registry-url: "https://npmjs.org"
       - name: Build and publish to npm via Trusted Publisher
         working-directory: packages/js
         run: |
-          npm install -g npm@latest
           npx -p typescript tsc
           npm publish --provenance --access public
 
