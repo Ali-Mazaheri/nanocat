@@ -294,11 +294,29 @@ def get_git_line_markers(filepath: str) -> dict[int, str]:
     return markers
 
 
+LANG_ALIASES = {
+    "py": "python",
+    "md": "markdown",
+    "yml": "yaml",
+    "rs": "rust",
+    "rb": "ruby",
+    "cs": "csharp",
+    "cpp": "c++",
+    "cc": "c++",
+    "hpp": "c++",
+    "sh": "sh",
+    "bash": "sh",
+    "zsh": "sh",
+    "dockerfile": "dockerfile",
+}
+
+
 def select_syntax(syntaxes: list[dict], lang: str | None, filename: str | None, content: str) -> dict | None:
     matched = None
 
     if lang:
-        target = lang.lower()
+        raw_target = lang.lower()
+        target = LANG_ALIASES.get(raw_target, raw_target)
         for s in syntaxes:
             if s["name"].lower() == target or os.path.basename(s["file"]).lower() == f"{target}.nanorc":
                 matched = s

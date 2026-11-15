@@ -69,3 +69,11 @@ color brightblue start="/\\*" end="\\*/"
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestAliases(unittest.TestCase):
+    def test_lang_aliases(self):
+        syntaxes = [{"name": "Python", "file": "/tmp/python.nanorc", "ext_patterns": [], "header_patterns": [], "raw_rules": [], "rules": []}]
+        matched = nanocat.select_syntax(syntaxes, "py", None, "")
+        self.assertIsNotNone(matched)
+        self.assertEqual(matched["name"], "Python")
