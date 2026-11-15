@@ -2,7 +2,7 @@
 set -euo pipefail
 
 INSTALL_DIR="${HOME}/.local/bin"
-RAW_URL="https://githubusercontent.com"
+RAW_URL="https://raw.githubusercontent.com/Ali-Mazaheri/nanocat/main/nanocat"
 
 mkdir -p "$INSTALL_DIR"
 curl -fsSL "$RAW_URL" -o "$INSTALL_DIR/nanocat"
