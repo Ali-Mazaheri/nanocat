@@ -13,27 +13,33 @@ Zero external dependencies (Python 3 standard library only).
 
 ## Installation
 
-### Quick Install (One-Liner)
-
-```bash
-curl -fsSL https://githubusercontent.com | bash
-```
-
-### Via pipx or uv
+### Python (`pipx` / `pip`)
 
 ```bash
 pipx install nanocat-cli
 ```
 
-### Manual Install
+### Debian / Ubuntu (`.deb`)
+
+Download `nanocat_0.4.4_all.deb` from the [Releases](https://github.com) page and run:
 
 ```bash
-git clone https://github.com
-mkdir -p ~/.local/bin
-ln -sf "\$(pwd)/nanocat/nanocat" ~/.local/bin/nanocat
+sudo apt install ./nanocat_0.4.4_all.deb
 ```
 
-## Usage
+### TypeScript / JavaScript (`npm`)
+
+```bash
+npm install @ali.mazaheri/nanocat
+```
+
+### Quick Install Script (Linux / macOS)
+
+```bash
+curl -fsSL https://githubusercontent.com | bash
+```
+
+## CLI Usage
 
 ```bash
 # Highlight one or more files directly (auto-detects extension or shebang)
@@ -48,4 +54,14 @@ grep -n "func " main.go | nanocat -l go
 
 # List all detected .nanorc syntax definitions
 nanocat --list
+```
+
+## TypeScript / JavaScript SDK Usage
+
+```ts
+import { parseNanorc, highlight } from "@ali.mazaheri/nanocat";
+
+const syntaxes = parseNanorc(nanorcFileContent);
+const ansiOutput = highlight(code, syntaxes[0], "ansi");
+const htmlOutput = highlight(code, syntaxes[0], "html");
 ```
