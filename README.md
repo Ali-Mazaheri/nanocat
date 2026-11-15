@@ -21,7 +21,7 @@ pipx install nanocat-cli
 
 ### Debian / Ubuntu (`.deb`)
 
-Download `nanocat_0.4.4_all.deb` from the [Releases](https://github.com) page and run:
+Download `nanocat_0.4.4_all.deb` from the [Releases](https://github.comAli-Mazaheri/nanocat/releases) page and run:
 
 ```bash
 sudo apt install ./nanocat_0.4.4_all.deb
@@ -36,7 +36,7 @@ npm install @ali.mazaheri/nanocat
 ### Quick Install Script (Linux / macOS)
 
 ```bash
-curl -fsSL https://githubusercontent.com | bash
+curl -fsSL https://githubusercontent.comAli-Mazaheri/nanocat/main/install.shAli-Mazaheri/nanocat/main/install.sh | bash
 ```
 
 ## CLI Usage
