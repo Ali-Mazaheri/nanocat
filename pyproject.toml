@@ -23,5 +23,5 @@ Homepage = "https://github.com"
 Issues = "https://github.com/issues"
 
 [tool.setuptools]
-scripts = ["nanocat"]
+script-files = ["nanocat"]
 py-modules = []
