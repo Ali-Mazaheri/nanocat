@@ -3,8 +3,8 @@ requires = ["setuptools"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "nanocat"
-version = "0.3.0"
+name = "nanocat-cli"
+version = "0.4.1"
 description = "Syntax-highlight files or stdin using GNU nano (.nanorc) rules."
 readme = "README.md"
 license = {file = "LICENSE"}

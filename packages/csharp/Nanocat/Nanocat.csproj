@@ -4,7 +4,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <PackageId>Nanocat</PackageId>
-    <Version>0.3.0</Version>
+    <Version>0.4.1</Version>
     <Authors>Ali Mazaheri</Authors>
     <Description>Zero-dependency .nanorc syntax highlighter for .NET CLI and HTML output.</Description>
   </PropertyGroup>
