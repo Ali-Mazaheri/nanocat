@@ -47,6 +47,9 @@ jobs:
   publish-npm:
     runs-on: ubuntu-latest
     if: ${{ vars.ENABLE_NPM == 'true' }}
+    environment:
+      name: npm
+      url: https://npmjs.com
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
