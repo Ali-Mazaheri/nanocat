@@ -317,7 +317,7 @@ def select_syntax(syntaxes: list[dict], lang: str | None, filename: str | None, 
                 break
 
     if not matched and content:
-        first_line = content.splitlines()
+        first_line = content.splitlines()[0]
         for s in syntaxes:
             for pat in s["header_patterns"]:
                 try:
