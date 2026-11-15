@@ -12,8 +12,8 @@ color brightblue start="/\\*" end="\\*/"
   assert.equal(syntaxes.length, 1);
 
   const code = "func main() { /* return */ return }";
-  const ansi = highlight(code, syntaxes, "ansi");
-  const html = highlight(code, syntaxes, "html");
+  const ansi = highlight(code, syntaxes[0], "ansi");
+  const html = highlight(code, syntaxes[0], "html");
 
   assert.match(ansi, /\x1b\[32mfunc\x1b\[0m/);
   assert.match(ansi, /\x1b\[94m\/\* return \*\/\x1b\[0m/);
